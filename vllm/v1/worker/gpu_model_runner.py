@@ -2739,17 +2739,10 @@ class GPUModelRunner(
         # Add per-token task_ids and is_decode for task-expert routing
         # Only add if any request has task_id set (i.e., not all are -1)
         num_scheduled_tokens = scheduler_output.total_num_scheduled_tokens
-        task_ids_np = self.task_ids.np[:num_scheduled_tokens]
-        if np.any(task_ids_np >= 0):
-            model_kwargs.update({
-                "task_ids": self.task_ids.gpu[:num_input_tokens],
-                "is_decode": self.is_decode.gpu[:num_input_tokens],
-            })
-        else:
-            model_kwargs.update({
-                "task_ids": None,
-                "is_decode": None,
-            })
+        model_kwargs.update({
+            "task_ids": self.task_ids.gpu[:num_input_tokens],
+            "is_decode": self.is_decode.gpu[:num_input_tokens],
+        })
 
         return (
             input_ids,
@@ -4469,6 +4462,13 @@ class GPUModelRunner(
                 num_tokens_padded = ubatch_slices_padded[0].num_tokens
                 if num_tokens_across_dp is not None:
                     num_tokens_across_dp[:] = num_tokens_padded
+
+            # Add task_ids and is_decode for task-expert routing during warmup
+            # This ensures CUDA graphs capture the task_ids processing path
+            model_kwargs.update({
+                "task_ids": self.task_ids.gpu[:num_tokens_padded],
+                "is_decode": self.is_decode.gpu[:num_tokens_padded],
+            })
 
             with (
                 self.maybe_randomize_inputs(input_ids, inputs_embeds),
